@@ -1,0 +1,223 @@
+# ============================================
+# SECURITY CRITICAL - YUBIKEY & CREDENTIALS
+# ============================================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*_rsa
+*_dsa
+*_ed25519
+*_ecdsa
+*.ppk
+*.pub
+.yubikey/
+yubikey.txt
+yubikey.json
+*yubikey*
+*YubiKey*
+.ssh/
+secrets/
+credentials/
+.credentials/
+private/
+.private/
+
+# ============================================
+# ENVIRONMENT & CONFIG SECURITY
+# ============================================
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+*.env
+config.json
+secrets.json
+settings.json
+auth.json
+database.json
+firebase.json
+aws-config.json
+
+# ============================================
+# NODE.JS
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.npm
+.yarn
+
+# ============================================
+# BUILD OUTPUTS
+# ============================================
+dist/
+dist-ssr/
+build/
+out/
+.output/
+.nuxt/
+.next/
+*.local
+
+# ============================================
+# DEVELOPMENT TOOLS & CACHES
+# ============================================
+.cache/
+.parcel-cache/
+.vite/
+.temp/
+.tmp/
+*.swp
+*.swo
+*~
+.fusebox/
+.dynamodb/
+.serverless/
+.webpack/
+
+# ============================================
+# LOGS & DATABASES
+# ============================================
+logs/
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+*.mdb
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================
+# IDE & EDITOR
+# ============================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ============================================
+# OS SPECIFIC
+# ============================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# TESTING & COVERAGE
+# ============================================
+coverage/
+*.lcov
+.nyc_output/
+.grunt/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# ============================================
+# SECURITY & AUTHENTICATION
+# ============================================
+*.backup
+*.bak
+*.old
+*.orig
+*.tmp
+.htaccess
+.htpasswd
+auth/
+tokens/
+sessions/
+*.token
+jwt.txt
+oauth-tokens/
+
+# ============================================
+# SENSITIVE DATA
+# ============================================
+*.csv
+*.dat
+*.data
+personal/
+confidential/
+secure/
+*.password
+*.passwd
+wallet.json
+keystore/
+
+# ============================================
+# VERSION CONTROL
+# ============================================
+.git/
+.gitattributes
+.svn/
+.hg/
+.bzr/
+
+# ============================================
+# MISCELLANEOUS
+# ============================================
+*.patch
+*.diff
+TODO.md
+NOTES.md
+.notes/
+scratch/
+temp/
