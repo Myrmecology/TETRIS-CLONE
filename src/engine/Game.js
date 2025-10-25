@@ -1,680 +1,457 @@
 /**
- * Game.js - Main game engine for Tetris Neon Shatter
- * Orchestrates all game systems and manages the game loop
+ * Game.js - Main game logic controller
+ * Orchestrates all game systems and manages game state
  */
 
-import { GAME_STATE, TIMING, BOARD, PERFORMANCE, DEV } from '../utils/Constants.js';
-import { PieceBag, getGravity, framesToMs } from '../utils/Helpers.js';
+import { EventEmitter } from './EventEmitter.js';
 import { Board } from './Board.js';
-import { Piece } from './Piece.js';
-import { ScoreManager } from './Score.js';
-import { inputHandler } from './Input.js';
-import { gameEventBus, GAME_EVENTS } from './EventEmitter.js';
+import { Piece, PieceBag } from './Piece.js';
+import { Score } from './Score.js';
+import { Input } from './Input.js';
+import { BOARD, TIMING } from '../utils/Constants.js';
 
-/**
- * Main Game Engine Class
- * Coordinates all game systems and runs the game loop
- */
-export class Game {
-  constructor() {
-    // Core systems
-    this.board = new Board();
-    this.scoreManager = new ScoreManager();
-    this.pieceBag = new PieceBag();
+export class Game extends EventEmitter {
+  constructor(options = {}) {
+    super();
     
     // Game state
-    this.state = GAME_STATE.MENU;
-    this.previousState = null;
+    this.isRunning = false;
+    this.isPaused = false;
+    this.isGameOver = false;
     
-    // Pieces
+    // Game systems
+    this.board = new Board();
+    this.score = new Score(options.startLevel || 1);
+    this.input = new Input();
+    this.pieceBag = new PieceBag();
+    
+    // Current pieces
     this.currentPiece = null;
-    this.heldPiece = null;
-    this.nextPieces = [];
+    this.nextPiece = null;
+    this.holdPiece = null;
     this.canHold = true;
     
-    // Timing
-    this.gameTime = 0;
-    this.frameTime = 0;
-    this.deltaTime = 0;
-    this.lastFrameTime = performance.now();
-    this.accumulator = 0;
-    this.fixedTimeStep = PERFORMANCE.FIXED_TIME_STEP;
-    
-    // Game loop
-    this.animationId = null;
-    this.isRunning = false;
-    
-    // Performance monitoring
-    this.fps = 60;
-    this.frameCount = 0;
-    this.fpsUpdateTimer = 0;
-    
-    // Game flow
-    this.countdownTimer = 0;
-    this.gameOverTimer = 0;
-    this.levelTransitionTimer = 0;
-    
-    // Effects and animations
-    this.screenShake = 0;
-    this.screenFlash = 0;
-    this.speedLinesIntensity = 0;
-    
-    // Development/debug
-    this.debugMode = DEV.SHOW_COLLISION_BOXES;
-    this.stats = {
-      updates: 0,
-      renders: 0,
-      pieceCount: 0
+    // Game settings
+    this.settings = {
+      ghostPiece: options.ghostPiece !== false,
+      particles: options.particles !== false,
+      screenShake: options.screenShake !== false
     };
     
-    // Initialize
+    // Timing
+    this.lastUpdateTime = 0;
+    this.dropCounter = 0;
+    this.lockDelay = 0;
+    this.lockMoves = 0;
+    
     this.init();
   }
-  
+
   /**
    * Initialize game systems
    */
   init() {
-    // Setup input handlers
-    this.setupInput();
+    // Setup input listeners
+    this.setupInputListeners();
     
-    // Setup board event listeners
-    this.setupBoardEvents();
+    // Setup board listeners
+    this.setupBoardListeners();
     
-    // Setup game event listeners
-    this.setupGameEvents();
-    
-    // Generate initial piece queue
-    this.refillNextPieces();
-    
-    // Set initial state
-    if (DEV.SKIP_MENU) {
-      this.state = GAME_STATE.COUNTDOWN;
-    }
-    
-    console.log('🎮 Tetris Neon Shatter initialized');
+    // Setup score listeners
+    this.setupScoreListeners();
   }
-  
+
   /**
-   * Setup input handlers
+   * Setup input event listeners
    */
-  setupInput() {
-    // Movement
-    inputHandler.onAction('MOVE_LEFT', () => {
-      if (this.state === GAME_STATE.PLAYING && this.currentPiece) {
-        if (this.currentPiece.moveLeft()) {
-          gameEventBus.emit(GAME_EVENTS.PIECE_MOVE, { direction: 'left' });
-        }
-      }
-    });
-    
-    inputHandler.onAction('MOVE_RIGHT', () => {
-      if (this.state === GAME_STATE.PLAYING && this.currentPiece) {
-        if (this.currentPiece.moveRight()) {
-          gameEventBus.emit(GAME_EVENTS.PIECE_MOVE, { direction: 'right' });
-        }
-      }
-    });
-    
-    // Rotation
-    inputHandler.onAction('ROTATE_CW', () => {
-      if (this.state === GAME_STATE.PLAYING && this.currentPiece) {
-        if (this.currentPiece.rotateCW()) {
-          gameEventBus.emit(GAME_EVENTS.PIECE_ROTATE, { direction: 'cw' });
-        }
-      }
-    });
-    
-    inputHandler.onAction('ROTATE_CCW', () => {
-      if (this.state === GAME_STATE.PLAYING && this.currentPiece) {
-        if (this.currentPiece.rotateCCW()) {
-          gameEventBus.emit(GAME_EVENTS.PIECE_ROTATE, { direction: 'ccw' });
-        }
-      }
-    });
-    
-    // Drops
-    inputHandler.onAction('SOFT_DROP', () => {
-      if (this.state === GAME_STATE.PLAYING && this.currentPiece) {
-        this.currentPiece.softDropping = true;
-        gameEventBus.emit(GAME_EVENTS.SOFT_DROP, { start: true });
-      }
-    });
-    
-    inputHandler.onAction('SOFT_DROP_RELEASE', () => {
-      if (this.currentPiece) {
-        this.currentPiece.softDropping = false;
-        gameEventBus.emit(GAME_EVENTS.SOFT_DROP, { start: false });
-      }
-    });
-    
-    inputHandler.onAction('HARD_DROP', (isInitial) => {
-      if (!isInitial) return; // Only on key press, not repeat
-      if (this.state === GAME_STATE.PLAYING && this.currentPiece) {
-        const distance = this.currentPiece.hardDrop();
-        this.scoreManager.addHardDropScore(distance);
-        
-        // Add effects
-        this.screenShake = 10;
-        this.screenFlash = 0.5;
-        
-        gameEventBus.emit(GAME_EVENTS.HARD_DROP, { distance });
-        
-        // Immediately lock and spawn next
-        this.handlePieceLock();
-      }
-    });
-    
-    // Hold
-    inputHandler.onAction('HOLD', (isInitial) => {
-      if (!isInitial) return;
-      if (this.state === GAME_STATE.PLAYING) {
-        this.holdPiece();
-      }
-    });
-    
-    // Pause
-    inputHandler.onAction('PAUSE', (isInitial) => {
-      if (!isInitial) return;
-      this.togglePause();
-    });
-    
-    // Restart
-    inputHandler.onAction('RESTART', (isInitial) => {
-      if (!isInitial) return;
-      if (this.state === GAME_STATE.GAME_OVER) {
-        this.restart();
-      }
-    });
+  setupInputListeners() {
+    this.input.on('moveLeft', () => this.movePiece(-1));
+    this.input.on('moveRight', () => this.movePiece(1));
+    this.input.on('softDrop', () => this.softDrop());
+    this.input.on('hardDrop', () => this.hardDrop());
+    this.input.on('rotateClockwise', () => this.rotatePiece(1));
+    this.input.on('rotateCounterClockwise', () => this.rotatePiece(-1));
+    this.input.on('hold', () => this.holdCurrentPiece());
+    this.input.on('pause', () => this.togglePause());
   }
-  
+
   /**
    * Setup board event listeners
    */
-  setupBoardEvents() {
+  setupBoardListeners() {
     this.board.on('linesCleared', (data) => {
-      const score = this.scoreManager.addLineClearScore(data.count);
-      
-      // Add effects based on lines cleared
-      if (data.count === 4) {
-        this.screenShake = 20;
-        this.screenFlash = 1;
-        gameEventBus.emit(GAME_EVENTS.TETRIS);
-      } else {
-        this.screenShake = data.count * 5;
-        this.screenFlash = data.count * 0.2;
-      }
-      
-      gameEventBus.emit(GAME_EVENTS.LINE_CLEAR, {
+      this.emit('linesCleared', {
         lines: data.count,
-        score,
-        combo: data.combo
+        totalLines: this.score.getLines()
       });
     });
-    
-    this.board.on('perfectClear', () => {
-      const bonus = this.scoreManager.addPerfectClearScore();
-      this.screenFlash = 2;
-      gameEventBus.emit(GAME_EVENTS.PERFECT_CLEAR, { bonus });
-    });
-    
-    this.board.on('dangerHigh', (level) => {
-      this.speedLinesIntensity = level / 100;
-    });
   }
-  
+
   /**
-   * Setup game event listeners
+   * Setup score event listeners
    */
-  setupGameEvents() {
-    gameEventBus.on(GAME_EVENTS.LEVEL_UP, (data) => {
-      this.state = GAME_STATE.LEVEL_TRANSITION;
-      this.levelTransitionTimer = 0;
+  setupScoreListeners() {
+    this.score.on('scoreUpdate', (data) => {
+      this.emit('scoreUpdate', data);
+    });
+
+    this.score.on('levelUp', (data) => {
+      this.emit('levelUp', data);
+    });
+
+    this.score.on('combo', (data) => {
+      this.emit('combo', data);
     });
   }
-  
+
   /**
    * Start the game
    */
   start() {
-    if (this.isRunning) return;
-    
-    console.log('🚀 Starting game');
-    
-    this.reset();
-    this.state = GAME_STATE.COUNTDOWN;
-    this.countdownTimer = 3000; // 3 second countdown
-    
     this.isRunning = true;
-    this.lastFrameTime = performance.now();
-    this.gameLoop();
+    this.isPaused = false;
+    this.isGameOver = false;
     
-    gameEventBus.emit(GAME_EVENTS.GAME_START);
+    // Reset systems
+    this.board.clear();
+    this.score.reset(this.score.getLevel());
+    this.pieceBag.reset();
+    
+    // Spawn initial pieces
+    this.nextPiece = this.pieceBag.getNext();
+    this.emit('nextPiece', { type: this.nextPiece.type });
+    
+    this.spawnPiece();
+    
+    this.lastUpdateTime = Date.now();
+    
+    this.emit('gameStart', {
+      level: this.score.getLevel()
+    });
   }
-  
+
   /**
-   * Main game loop
+   * Update game state (called every frame)
    */
-  gameLoop = (currentTime) => {
-    if (!this.isRunning) return;
-    
-    // Calculate delta time
-    this.deltaTime = Math.min(currentTime - this.lastFrameTime, PERFORMANCE.MAX_DELTA_TIME);
-    this.lastFrameTime = currentTime;
-    
-    // Fixed timestep with interpolation
-    this.accumulator += this.deltaTime;
-    
-    while (this.accumulator >= this.fixedTimeStep) {
-      this.fixedUpdate(this.fixedTimeStep);
-      this.accumulator -= this.fixedTimeStep;
-    }
-    
-    // Variable update for animations
-    this.update(this.deltaTime);
-    
-    // Update FPS
-    this.updateFPS(this.deltaTime);
-    
-    // Continue loop
-    this.animationId = requestAnimationFrame(this.gameLoop);
+  update() {
+    if (!this.isRunning || this.isPaused || this.isGameOver) return;
+
+    const currentTime = Date.now();
+    const deltaTime = currentTime - this.lastUpdateTime;
+    this.lastUpdateTime = currentTime;
+
+    // Apply gravity
+    this.updateGravity(deltaTime);
   }
-  
+
   /**
-   * Fixed timestep update (game logic)
+   * Update gravity and piece falling
    */
-  fixedUpdate(deltaTime) {
-    this.stats.updates++;
-    
-    // Update based on game state
-    switch (this.state) {
-      case GAME_STATE.COUNTDOWN:
-        this.updateCountdown(deltaTime);
-        break;
-        
-      case GAME_STATE.PLAYING:
-        this.updatePlaying(deltaTime);
-        break;
-        
-      case GAME_STATE.LINE_CLEAR:
-        this.updateLineClear(deltaTime);
-        break;
-        
-      case GAME_STATE.LEVEL_TRANSITION:
-        this.updateLevelTransition(deltaTime);
-        break;
-        
-      case GAME_STATE.GAME_OVER:
-        this.updateGameOver(deltaTime);
-        break;
-    }
-  }
-  
-  /**
-   * Variable timestep update (animations)
-   */
-  update(deltaTime) {
-    // Update input system
-    inputHandler.update(deltaTime);
-    
-    // Update score animations
-    this.scoreManager.update(deltaTime);
-    
-    // Update visual effects
-    this.updateEffects(deltaTime);
-    
-    // Update game time
-    if (this.state === GAME_STATE.PLAYING) {
-      this.gameTime += deltaTime;
-    }
-    
-    this.stats.renders++;
-  }
-  
-  /**
-   * Update countdown state
-   */
-  updateCountdown(deltaTime) {
-    this.countdownTimer -= deltaTime;
-    
-    if (this.countdownTimer <= 0) {
-      this.state = GAME_STATE.PLAYING;
-      this.spawnNextPiece();
-      inputHandler.enable();
-    }
-  }
-  
-  /**
-   * Update playing state
-   */
-  updatePlaying(deltaTime) {
-    if (!this.currentPiece) {
-      this.spawnNextPiece();
-      return;
-    }
-    
-    // Update current piece with gravity
-    const gravity = framesToMs(getGravity(this.scoreManager.level));
-    this.currentPiece.update(deltaTime, gravity);
-    
-    // Check if piece is locked
-    if (this.currentPiece.locked) {
-      this.handlePieceLock();
-    }
-    
-    // Update board animations
-    if (this.board.isClearing) {
-      this.state = GAME_STATE.LINE_CLEAR;
-    }
-  }
-  
-  /**
-   * Update line clear state
-   */
-  updateLineClear(deltaTime) {
-    this.board.updateLineClear(deltaTime);
-    
-    if (!this.board.isClearing) {
-      this.state = GAME_STATE.PLAYING;
-      this.spawnNextPiece();
-    }
-  }
-  
-  /**
-   * Update level transition
-   */
-  updateLevelTransition(deltaTime) {
-    this.levelTransitionTimer += deltaTime;
-    
-    if (this.levelTransitionTimer >= 2000) {
-      this.state = GAME_STATE.PLAYING;
-      this.levelTransitionTimer = 0;
-    }
-  }
-  
-  /**
-   * Update game over state
-   */
-  updateGameOver(deltaTime) {
-    this.gameOverTimer += deltaTime;
-    
-    if (this.gameOverTimer >= TIMING.GAME_OVER_DELAY) {
-      // Save high score
-      if (this.scoreManager.isNewHighScore) {
-        this.scoreManager.saveHighScore();
+  updateGravity(deltaTime) {
+    if (!this.currentPiece) return;
+
+    const gravitySpeed = this.score.getGravitySpeed();
+    const dropInterval = gravitySpeed * 16.67; // Convert frames to ms (60fps)
+
+    this.dropCounter += deltaTime;
+
+    if (this.dropCounter >= dropInterval) {
+      this.dropCounter = 0;
+      
+      if (this.board.canPlacePiece(this.currentPiece, 1, 0)) {
+        this.currentPiece.move(1, 0);
+        this.lockDelay = 0;
+        this.lockMoves = 0;
+      } else {
+        this.handleLockDelay(deltaTime);
       }
     }
   }
-  
+
   /**
-   * Update visual effects
+   * Handle lock delay when piece touches ground
    */
-  updateEffects(deltaTime) {
-    // Screen shake decay
-    if (this.screenShake > 0) {
-      this.screenShake *= 0.9;
-      if (this.screenShake < 0.1) this.screenShake = 0;
-    }
-    
-    // Screen flash decay
-    if (this.screenFlash > 0) {
-      this.screenFlash -= deltaTime / 1000;
-      if (this.screenFlash < 0) this.screenFlash = 0;
-    }
-    
-    // Speed lines decay
-    if (this.speedLinesIntensity > 0) {
-      this.speedLinesIntensity *= 0.95;
-      if (this.speedLinesIntensity < 0.01) this.speedLinesIntensity = 0;
+  handleLockDelay(deltaTime) {
+    this.lockDelay += deltaTime;
+
+    if (this.lockDelay >= TIMING.LOCK_DELAY || this.lockMoves >= TIMING.MAX_LOCK_MOVES) {
+      this.lockPiece();
     }
   }
-  
+
   /**
-   * Handle piece locking
+   * Spawn a new piece
    */
-  handlePieceLock() {
-    // Place piece on board
-    const linesCleared = this.board.placePiece(this.currentPiece);
-    
-    // Update score for soft drops during the piece lifetime
-    if (this.currentPiece.distanceFallen > 0) {
-      this.scoreManager.addSoftDropScore(this.currentPiece.distanceFallen);
-    }
-    
-    // Update statistics
-    this.scoreManager.addPiece();
-    this.stats.pieceCount++;
-    
-    // Clear current piece
-    this.currentPiece = null;
+  spawnPiece() {
+    this.currentPiece = this.nextPiece;
+    this.nextPiece = this.pieceBag.getNext();
     this.canHold = true;
     
-    // Check for game over
-    const nextPieceType = this.nextPieces[0];
-    const testPiece = new Piece(nextPieceType, this.board.grid);
-    
-    if (this.board.checkGameOver(testPiece)) {
-      this.gameOver();
-    } else if (!this.board.isClearing) {
-      // Spawn next piece if not clearing lines
-      this.spawnNextPiece();
+    this.emit('nextPiece', { type: this.nextPiece.type });
+    this.emit('pieceSpawn', { type: this.currentPiece.type });
+
+    // Check if piece can spawn
+    if (!this.board.canPlacePiece(this.currentPiece)) {
+      this.endGame();
     }
-    
-    gameEventBus.emit(GAME_EVENTS.PIECE_LOCK);
   }
-  
+
   /**
-   * Spawn next piece
+   * Move piece horizontally
    */
-  spawnNextPiece() {
-    // Get next piece type
-    const pieceType = this.nextPieces.shift();
-    this.refillNextPieces();
-    
-    // Create new piece
-    this.currentPiece = new Piece(pieceType, this.board.grid);
-    
-    // Check spawn collision (game over)
-    if (!this.currentPiece.calculateGhostPosition()) {
-      this.gameOver();
-      return;
+  movePiece(direction) {
+    if (!this.currentPiece || this.isGameOver) return;
+
+    if (this.board.canPlacePiece(this.currentPiece, 0, direction)) {
+      this.currentPiece.move(0, direction);
+      this.lockMoves++;
+      this.emit('pieceMove', { direction });
     }
-    
-    gameEventBus.emit(GAME_EVENTS.PIECE_SPAWN, {
-      type: pieceType,
-      position: { row: this.currentPiece.row, col: this.currentPiece.col }
-    });
   }
-  
+
+  /**
+   * Rotate piece
+   */
+  rotatePiece(direction) {
+    if (!this.currentPiece || this.isGameOver) return;
+
+    const oldRotation = this.currentPiece.rotation;
+    
+    if (direction > 0) {
+      this.currentPiece.rotateClockwise();
+    } else {
+      this.currentPiece.rotateCounterClockwise();
+    }
+
+    // Try rotation, with wall kicks
+    if (!this.board.canPlacePiece(this.currentPiece)) {
+      // Try wall kicks
+      const kicked = this.tryWallKicks();
+      
+      if (!kicked) {
+        // Revert rotation if all kicks fail
+        this.currentPiece.setRotation(oldRotation);
+        return;
+      }
+    }
+
+    this.lockMoves++;
+    this.emit('pieceRotate', { direction });
+  }
+
+  /**
+   * Try wall kick positions
+   */
+  tryWallKicks() {
+    const kicks = [
+      [0, 1],   // Right
+      [0, -1],  // Left
+      [0, 2],   // Right 2
+      [0, -2],  // Left 2
+      [-1, 0],  // Up
+      [-1, 1],  // Up-Right
+      [-1, -1]  // Up-Left
+    ];
+
+    for (const [rowOffset, colOffset] of kicks) {
+      if (this.board.canPlacePiece(this.currentPiece, rowOffset, colOffset)) {
+        this.currentPiece.move(rowOffset, colOffset);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Soft drop (move piece down faster)
+   */
+  softDrop() {
+    if (!this.currentPiece || this.isGameOver) return;
+
+    if (this.board.canPlacePiece(this.currentPiece, 1, 0)) {
+      this.currentPiece.move(1, 0);
+      this.score.addSoftDropScore(1);
+      this.dropCounter = 0;
+      this.lockDelay = 0;
+    } else {
+      this.lockPiece();
+    }
+  }
+
+  /**
+   * Hard drop (instantly drop piece)
+   */
+  hardDrop() {
+    if (!this.currentPiece || this.isGameOver) return;
+
+    const startRow = this.currentPiece.row;
+    const ghostRow = this.board.getGhostPosition(this.currentPiece);
+    const distance = ghostRow - startRow;
+
+    this.currentPiece.setPosition(ghostRow, this.currentPiece.col);
+    this.score.addHardDropScore(distance);
+    
+    this.emit('hardDrop', { distance });
+    
+    this.lockPiece();
+  }
+
   /**
    * Hold current piece
    */
-  holdPiece() {
-    if (!this.currentPiece || !this.canHold) return;
-    
-    const currentType = this.currentPiece.type;
-    
-    if (this.heldPiece === null) {
-      // First hold
-      this.heldPiece = currentType;
-      this.spawnNextPiece();
-    } else {
+  holdCurrentPiece() {
+    if (!this.canHold || !this.currentPiece || this.isGameOver) return;
+
+    if (this.holdPiece) {
       // Swap with held piece
-      const tempType = this.heldPiece;
-      this.heldPiece = currentType;
-      this.currentPiece = new Piece(tempType, this.board.grid);
+      const temp = this.holdPiece;
+      this.holdPiece = new Piece(this.currentPiece.type);
+      this.currentPiece = new Piece(temp.type);
+    } else {
+      // Store current piece and spawn next
+      this.holdPiece = new Piece(this.currentPiece.type);
+      this.currentPiece = this.nextPiece;
+      this.nextPiece = this.pieceBag.getNext();
+      this.emit('nextPiece', { type: this.nextPiece.type });
     }
-    
+
     this.canHold = false;
+    this.lockDelay = 0;
+    this.lockMoves = 0;
+    this.dropCounter = 0;
+
+    this.emit('holdPiece', { type: this.holdPiece ? this.holdPiece.type : null });
+    this.emit('pieceSpawn', { type: this.currentPiece.type });
+  }
+
+  /**
+   * Lock piece to board
+   */
+  lockPiece() {
+    if (!this.currentPiece) return;
+
+    // Lock piece
+    const blocks = this.board.lockPiece(this.currentPiece);
+    this.score.incrementPiecesPlaced();
+
+    // Check for line clears
+    const completedLines = this.board.checkLines();
     
-    gameEventBus.emit(GAME_EVENTS.PIECE_HOLD, {
-      held: this.heldPiece,
-      swapped: currentType
-    });
-  }
-  
-  /**
-   * Refill next pieces queue
-   */
-  refillNextPieces() {
-    while (this.nextPieces.length < 5) {
-      this.nextPieces.push(this.pieceBag.getNext());
+    if (completedLines.length > 0) {
+      this.board.clearLines(completedLines);
+      this.score.addLineClearScore(completedLines.length);
+      
+      // Check for perfect clear
+      if (this.board.isPerfectClear()) {
+        this.score.addPerfectClearBonus();
+        this.emit('perfectClear');
+      }
+    } else {
+      // Reset combo if no lines cleared
+      this.score.combo = 0;
     }
+
+    // Reset lock delay
+    this.lockDelay = 0;
+    this.lockMoves = 0;
+    this.dropCounter = 0;
+
+    // Spawn next piece
+    setTimeout(() => {
+      this.spawnPiece();
+    }, TIMING.SPAWN_DELAY);
   }
-  
+
   /**
-   * Toggle pause
-   */
-  togglePause() {
-    if (this.state === GAME_STATE.PLAYING) {
-      this.pause();
-    } else if (this.state === GAME_STATE.PAUSED) {
-      this.resume();
-    }
-  }
-  
-  /**
-   * Pause game
+   * Pause the game
    */
   pause() {
-    if (this.state !== GAME_STATE.PLAYING) return;
-    
-    this.previousState = this.state;
-    this.state = GAME_STATE.PAUSED;
-    this.scoreManager.pause();
-    inputHandler.pause();
-    
-    gameEventBus.emit(GAME_EVENTS.GAME_PAUSE);
+    if (!this.isRunning || this.isGameOver) return;
+    this.isPaused = true;
+    this.input.disable();
+    this.emit('gamePause');
   }
-  
+
   /**
-   * Resume game
+   * Resume the game
    */
   resume() {
-    if (this.state !== GAME_STATE.PAUSED) return;
-    
-    this.state = this.previousState || GAME_STATE.PLAYING;
-    this.scoreManager.resume();
-    inputHandler.resume();
-    
-    gameEventBus.emit(GAME_EVENTS.GAME_RESUME);
+    if (!this.isRunning || !this.isPaused || this.isGameOver) return;
+    this.isPaused = false;
+    this.input.enable();
+    this.lastUpdateTime = Date.now();
+    this.emit('gameResume');
   }
-  
+
   /**
-   * Game over
+   * Toggle pause state
    */
-  gameOver() {
-    this.state = GAME_STATE.GAME_OVER;
-    this.gameOverTimer = 0;
-    inputHandler.disable();
-    
-    gameEventBus.emit(GAME_EVENTS.GAME_OVER, {
-      score: this.scoreManager.score,
-      level: this.scoreManager.level,
-      lines: this.scoreManager.lines,
-      time: this.gameTime
-    });
+  togglePause() {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
   }
-  
+
   /**
-   * Restart game
+   * End the game
    */
-  restart() {
-    this.reset();
-    this.start();
-  }
-  
-  /**
-   * Reset game state
-   */
-  reset() {
-    // Reset all systems
-    this.board.reset();
-    this.scoreManager.reset();
-    this.pieceBag.reset();
-    
-    // Reset pieces
-    this.currentPiece = null;
-    this.heldPiece = null;
-    this.nextPieces = [];
-    this.canHold = true;
-    
-    // Reset timing
-    this.gameTime = 0;
-    this.frameTime = 0;
-    
-    // Reset effects
-    this.screenShake = 0;
-    this.screenFlash = 0;
-    this.speedLinesIntensity = 0;
-    
-    // Refill pieces
-    this.refillNextPieces();
-  }
-  
-  /**
-   * Stop game
-   */
-  stop() {
+  endGame() {
+    this.isGameOver = true;
     this.isRunning = false;
+    this.score.endGame();
+    this.input.disable();
+
+    const stats = this.score.getStats();
     
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
-    }
-    
-    inputHandler.disable();
+    this.emit('gameOver', stats);
   }
-  
+
   /**
-   * Update FPS counter
+   * Get current game state
    */
-  updateFPS(deltaTime) {
-    this.frameCount++;
-    this.fpsUpdateTimer += deltaTime;
-    
-    if (this.fpsUpdateTimer >= 1000) {
-      this.fps = this.frameCount;
-      this.frameCount = 0;
-      this.fpsUpdateTimer = 0;
-      
-      gameEventBus.emit(GAME_EVENTS.FPS_UPDATE, { fps: this.fps });
-    }
-  }
-  
-  /**
-   * Get game state for rendering
-   */
-  getRenderState() {
+  getState() {
     return {
-      state: this.state,
-      board: this.board.getRenderState(),
-      currentPiece: this.currentPiece,
-      heldPiece: this.heldPiece,
-      nextPieces: this.nextPieces,
-      score: this.scoreManager.getDisplayData(),
-      effects: {
-        screenShake: this.screenShake,
-        screenFlash: this.screenFlash,
-        speedLines: this.speedLinesIntensity
-      },
-      countdown: Math.ceil(this.countdownTimer / 1000),
-      fps: this.fps,
-      gameTime: this.gameTime
+      isRunning: this.isRunning,
+      isPaused: this.isPaused,
+      isGameOver: this.isGameOver,
+      score: this.score.getScore(),
+      level: this.score.getLevel(),
+      lines: this.score.getLines(),
+      currentPiece: this.currentPiece ? this.currentPiece.getInfo() : null,
+      nextPiece: this.nextPiece ? this.nextPiece.type : null,
+      holdPiece: this.holdPiece ? this.holdPiece.type : null,
+      canHold: this.canHold,
+      board: this.board.getBoard()
     };
   }
-  
+
   /**
-   * Get game statistics
+   * Get ghost piece position
    */
-  getStatistics() {
+  getGhostPosition() {
+    if (!this.currentPiece || !this.settings.ghostPiece) return null;
+    
+    const ghostRow = this.board.getGhostPosition(this.currentPiece);
     return {
-      ...this.stats,
-      score: this.scoreManager.getStatistics(),
-      board: this.board.statistics,
-      fps: this.fps
+      row: ghostRow,
+      col: this.currentPiece.col,
+      type: this.currentPiece.type,
+      rotation: this.currentPiece.rotation,
+      shape: this.currentPiece.getCurrentShape()
     };
+  }
+
+  /**
+   * Clean up resources
+   */
+  dispose() {
+    this.isRunning = false;
+    this.input.dispose();
+    this.removeAllListeners();
+    this.board.removeAllListeners();
+    this.score.removeAllListeners();
   }
 }
-
-export default Game;
