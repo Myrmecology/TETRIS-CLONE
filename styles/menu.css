@@ -1,0 +1,459 @@
+/**
+ * menu.css - Styles for menus, settings, and overlays
+ * Main menu, settings panel, instructions, and game over screen
+ */
+
+/* Main Menu Container */
+.main-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+}
+
+.menu-content {
+  text-align: center;
+  max-width: 600px;
+  padding: 40px;
+}
+
+/* Menu Title */
+.menu-title {
+  font-size: 72px;
+  color: #00f0ff;
+  text-transform: uppercase;
+  letter-spacing: 10px;
+  margin-bottom: 20px;
+  text-shadow: 
+    0 0 20px rgba(0, 240, 255, 1),
+    0 0 40px rgba(0, 240, 255, 0.8),
+    0 0 60px rgba(0, 240, 255, 0.6);
+  animation: titleGlow 2s ease-in-out infinite;
+}
+
+@keyframes titleGlow {
+  0%, 100% { text-shadow: 
+    0 0 20px rgba(0, 240, 255, 1),
+    0 0 40px rgba(0, 240, 255, 0.8); 
+  }
+  50% { text-shadow: 
+    0 0 30px rgba(0, 240, 255, 1),
+    0 0 60px rgba(0, 240, 255, 1),
+    0 0 90px rgba(0, 240, 255, 0.8); 
+  }
+}
+
+.menu-subtitle {
+  font-size: 18px;
+  color: #88ccff;
+  letter-spacing: 3px;
+  margin-bottom: 50px;
+  text-transform: uppercase;
+}
+
+/* Menu Buttons */
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 30px;
+}
+
+.menu-btn {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(255, 0, 255, 0.2));
+  border: 2px solid #00f0ff;
+  color: #00f0ff;
+  padding: 15px 40px;
+  font-size: 18px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+}
+
+.menu-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(0, 240, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.5s, height 0.5s;
+}
+
+.menu-btn:hover {
+  transform: translateY(-3px);
+  border-color: #ff00ff;
+  color: #ff00ff;
+  box-shadow: 
+    0 0 30px rgba(255, 0, 255, 0.5),
+    0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.menu-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.menu-btn:active {
+  transform: translateY(0);
+}
+
+.menu-btn.secondary {
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+
+.menu-btn.secondary:hover {
+  border-color: #ff00ff;
+  color: #ff00ff;
+}
+
+/* Settings Panel */
+.settings-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  backdrop-filter: blur(15px);
+}
+
+.settings-content {
+  background: rgba(10, 10, 20, 0.95);
+  border: 2px solid #ff00ff;
+  border-radius: 15px;
+  padding: 40px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 0 40px rgba(255, 0, 255, 0.5);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.settings-title {
+  font-size: 36px;
+  color: #ff00ff;
+  text-shadow: 0 0 20px rgba(255, 0, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+}
+
+.close-btn {
+  background: none;
+  border: 2px solid #ff00ff;
+  color: #ff00ff;
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+  background: #ff00ff;
+  color: #000;
+  transform: rotate(90deg);
+}
+
+/* Settings Groups */
+.settings-group {
+  margin-bottom: 30px;
+}
+
+.settings-group h3 {
+  color: #00f0ff;
+  font-size: 20px;
+  margin-bottom: 15px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-bottom: 2px solid rgba(0, 240, 255, 0.3);
+  padding-bottom: 10px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-label {
+  color: #88ccff;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+/* Range Slider */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 150px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #00f0ff;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+  transition: all 0.3s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 1);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #00f0ff;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+}
+
+.slider-value {
+  color: #00f0ff;
+  font-weight: bold;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  width: 60px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.toggle-switch input {
+  display: none;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  background: #888;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  left: 33px;
+  background: #00f0ff;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+}
+
+.toggle-switch input:checked ~ .toggle-switch {
+  background: rgba(0, 240, 255, 0.3);
+}
+
+/* Custom Toggle Implementation */
+input[type="checkbox"] {
+  appearance: none;
+  width: 60px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+input[type="checkbox"]::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  background: #888;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+input[type="checkbox"]:checked {
+  background: rgba(0, 240, 255, 0.3);
+}
+
+input[type="checkbox"]:checked::before {
+  left: 33px;
+  background: #00f0ff;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+}
+
+/* Instructions Panel */
+.instructions-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  backdrop-filter: blur(15px);
+}
+
+.instructions-content {
+  background: rgba(10, 10, 20, 0.95);
+  border: 2px solid #ffaa00;
+  border-radius: 15px;
+  padding: 40px;
+  max-width: 700px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 0 40px rgba(255, 170, 0, 0.5);
+}
+
+.instructions-content h2 {
+  color: #ffaa00;
+  font-size: 32px;
+  margin-bottom: 20px;
+  text-shadow: 0 0 20px rgba(255, 170, 0, 0.8);
+}
+
+.instructions-content h3 {
+  color: #00f0ff;
+  font-size: 20px;
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+.instructions-content ul {
+  list-style: none;
+  margin: 15px 0;
+}
+
+.instructions-content li {
+  padding: 10px 0;
+  color: #88ccff;
+  font-size: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.instructions-content li:last-child {
+  border-bottom: none;
+}
+
+.instructions-content strong {
+  color: #fff;
+  font-weight: bold;
+}
+
+.key-combo {
+  display: inline-block;
+  background: rgba(0, 240, 255, 0.2);
+  border: 1px solid #00f0ff;
+  padding: 3px 8px;
+  border-radius: 3px;
+  color: #00f0ff;
+  font-weight: bold;
+  margin: 0 5px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .menu-title {
+    font-size: 48px;
+    letter-spacing: 5px;
+  }
+
+  .menu-subtitle {
+    font-size: 14px;
+  }
+
+  .menu-btn {
+    padding: 12px 30px;
+    font-size: 16px;
+  }
+
+  .settings-content,
+  .instructions-content {
+    padding: 25px;
+  }
+
+  .settings-title {
+    font-size: 28px;
+  }
+
+  input[type="range"] {
+    width: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .menu-title {
+    font-size: 36px;
+  }
+
+  .menu-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .settings-content,
+  .instructions-content {
+    padding: 20px;
+    max-height: 90vh;
+  }
+}
