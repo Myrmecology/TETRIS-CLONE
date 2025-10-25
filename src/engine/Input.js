@@ -1,497 +1,280 @@
 /**
- * Input.js - Input handling system for Tetris Neon Shatter
+ * Input.js - Input handling system
  * Manages keyboard input with DAS (Delayed Auto Shift) and ARR (Auto Repeat Rate)
  */
 
-import { CONTROLS, TIMING } from '../utils/Constants.js';
-import { gameEventBus, GAME_EVENTS } from './EventEmitter.js';
+import { TIMING } from '../utils/Constants.js';
+import { EventEmitter } from './EventEmitter.js';
 
-/**
- * Input Handler Class
- * Provides professional Tetris controls with proper DAS/ARR implementation
- */
-export class InputHandler {
+export class Input extends EventEmitter {
   constructor() {
-    // Key states
-    this.keys = new Map();
-    this.keyTimers = new Map();
-    this.keyRepeating = new Map();
+    super();
     
-    // Control mappings (can be remapped)
-    this.controls = { ...CONTROLS };
-    
-    // DAS (Delayed Auto Shift) settings
-    this.dasDelay = TIMING.DAS;
-    this.arr = TIMING.ARR;
-    
-    // Input state
+    this.keys = {};
+    this.keyTimers = {};
     this.enabled = true;
-    this.isPaused = false;
     
-    // Special key states
-    this.shiftKey = false;
-    this.ctrlKey = false;
-    this.altKey = false;
+    // DAS/ARR settings
+    this.dasDelay = TIMING.DAS; // Initial delay before auto-repeat
+    this.arrRate = TIMING.ARR;  // Auto-repeat rate
     
-    // Action callbacks
-    this.actions = new Map();
-    
-    // Input buffer for frame-perfect inputs
-    this.inputBuffer = [];
-    this.bufferSize = 3; // frames
-    this.bufferTimer = 0;
-    
-    // Statistics
-    this.stats = {
-      totalKeyPresses: 0,
-      actionsPerMinute: 0,
-      lastActions: []
-    };
-    
-    // Touch/gamepad support flags
-    this.touchEnabled = false;
-    this.gamepadEnabled = false;
-    this.gamepadIndex = null;
-    
-    // Bind event handlers
-    this.handleKeyDown = this.handleKeyDown.bind(this);
-    this.handleKeyUp = this.handleKeyUp.bind(this);
-    this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
-    this.handleBlur = this.handleBlur.bind(this);
-    
-    this.setupEventListeners();
+    this.init();
   }
-  
+
   /**
-   * Setup event listeners
+   * Initialize input handlers
    */
-  setupEventListeners() {
-    // Keyboard events
-    window.addEventListener('keydown', this.handleKeyDown);
-    window.addEventListener('keyup', this.handleKeyUp);
-    
-    // Handle tab switching / window blur
-    window.addEventListener('visibilitychange', this.handleVisibilityChange);
-    window.addEventListener('blur', this.handleBlur);
-    
-    // Prevent default for game keys
-    window.addEventListener('keydown', (e) => {
-      if (this.isGameKey(e.code)) {
-        e.preventDefault();
-      }
-    });
+  init() {
+    document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    document.addEventListener('keyup', (e) => this.handleKeyUp(e));
   }
-  
-  /**
-   * Remove event listeners
-   */
-  destroy() {
-    window.removeEventListener('keydown', this.handleKeyDown);
-    window.removeEventListener('keyup', this.handleKeyUp);
-    window.removeEventListener('visibilitychange', this.handleVisibilityChange);
-    window.removeEventListener('blur', this.handleBlur);
-    
-    this.keys.clear();
-    this.keyTimers.clear();
-    this.keyRepeating.clear();
-    this.actions.clear();
-  }
-  
+
   /**
    * Handle key down event
    */
-  handleKeyDown(event) {
+  handleKeyDown(e) {
     if (!this.enabled) return;
-    
-    const code = event.code;
-    
-    // Update modifier keys
-    this.shiftKey = event.shiftKey;
-    this.ctrlKey = event.ctrlKey;
-    this.altKey = event.altKey;
-    
-    // Ignore if key is already down
-    if (this.keys.get(code)) return;
-    
-    // Mark key as pressed
-    this.keys.set(code, true);
-    this.keyTimers.set(code, 0);
-    this.keyRepeating.set(code, false);
-    
-    // Update statistics
-    this.stats.totalKeyPresses++;
-    this.trackAction(code);
-    
-    // Emit key press event
-    gameEventBus.emit(GAME_EVENTS.KEY_PRESS, { code, event });
-    
-    // Check for immediate action
-    this.checkAction(code, true);
-    
-    // Add to input buffer for frame-perfect inputs
-    this.addToBuffer(code);
+
+    const key = e.key;
+
+    // Prevent default for game keys
+    if (this.isGameKey(key)) {
+      e.preventDefault();
+    }
+
+    // Check if key is already pressed (held down)
+    if (this.keys[key]) return;
+
+    this.keys[key] = true;
+
+    // Emit initial key press
+    this.emitKeyEvent(key, 'press');
+
+    // Setup auto-repeat for movement keys
+    if (this.isMovementKey(key)) {
+      this.setupAutoRepeat(key);
+    }
   }
-  
+
   /**
    * Handle key up event
    */
-  handleKeyUp(event) {
-    const code = event.code;
-    
-    // Update modifier keys
-    this.shiftKey = event.shiftKey;
-    this.ctrlKey = event.ctrlKey;
-    this.altKey = event.altKey;
-    
-    // Mark key as released
-    this.keys.set(code, false);
-    this.keyTimers.delete(code);
-    this.keyRepeating.delete(code);
-    
-    // Emit key release event
-    gameEventBus.emit(GAME_EVENTS.KEY_RELEASE, { code, event });
-    
-    // Handle key release actions (like stopping soft drop)
-    this.checkReleaseAction(code);
-  }
-  
-  /**
-   * Handle visibility change (tab switching)
-   */
-  handleVisibilityChange() {
-    if (document.hidden) {
-      this.releaseAllKeys();
+  handleKeyUp(e) {
+    const key = e.key;
+
+    if (this.keys[key]) {
+      this.keys[key] = false;
+      this.emitKeyEvent(key, 'release');
+    }
+
+    // Clear auto-repeat timer
+    if (this.keyTimers[key]) {
+      clearTimeout(this.keyTimers[key].dasTimer);
+      clearInterval(this.keyTimers[key].arrInterval);
+      delete this.keyTimers[key];
     }
   }
-  
+
   /**
-   * Handle window blur
+   * Setup auto-repeat for a key (DAS/ARR)
    */
-  handleBlur() {
-    this.releaseAllKeys();
-  }
-  
-  /**
-   * Release all keys (used when window loses focus)
-   */
-  releaseAllKeys() {
-    for (const [code] of this.keys) {
-      this.keys.set(code, false);
-      this.checkReleaseAction(code);
+  setupAutoRepeat(key) {
+    // Clear existing timers
+    if (this.keyTimers[key]) {
+      clearTimeout(this.keyTimers[key].dasTimer);
+      clearInterval(this.keyTimers[key].arrInterval);
     }
-    this.keyTimers.clear();
-    this.keyRepeating.clear();
-  }
-  
-  /**
-   * Update input system (called each frame)
-   */
-  update(deltaTime) {
-    if (!this.enabled || this.isPaused) return;
-    
-    // Update input buffer
-    this.updateBuffer(deltaTime);
-    
-    // Update DAS/ARR for held keys
-    for (const [code, isPressed] of this.keys) {
-      if (!isPressed) continue;
-      
-      const timer = this.keyTimers.get(code) || 0;
-      const isRepeating = this.keyRepeating.get(code) || false;
-      
-      // Check if this key should repeat
-      if (!this.shouldRepeat(code)) continue;
-      
-      if (!isRepeating) {
-        // Waiting for DAS delay
-        const newTimer = timer + deltaTime;
-        this.keyTimers.set(code, newTimer);
-        
-        if (newTimer >= this.dasDelay) {
-          // Start repeating
-          this.keyRepeating.set(code, true);
-          this.keyTimers.set(code, 0);
-          this.checkAction(code, false);
+
+    this.keyTimers[key] = {};
+
+    // DAS delay before auto-repeat starts
+    this.keyTimers[key].dasTimer = setTimeout(() => {
+      // ARR - auto-repeat at specified rate
+      this.keyTimers[key].arrInterval = setInterval(() => {
+        if (this.keys[key]) {
+          this.emitKeyEvent(key, 'repeat');
         }
-      } else {
-        // Already repeating - check ARR
-        const newTimer = timer + deltaTime;
-        this.keyTimers.set(code, newTimer);
-        
-        if (newTimer >= this.arr) {
-          this.keyTimers.set(code, 0);
-          this.checkAction(code, false);
-        }
-      }
-    }
-    
-    // Update APM (actions per minute)
-    this.updateAPM();
+      }, this.arrRate);
+    }, this.dasDelay);
   }
-  
+
   /**
-   * Check if a key should repeat
+   * Emit key event with mapped action
    */
-  shouldRepeat(code) {
-    // Check if key is in no-repeat list
-    for (const key of CONTROLS.NO_REPEAT) {
-      if (code === key) return false;
-    }
+  emitKeyEvent(key, type) {
+    const action = this.mapKeyToAction(key);
     
-    // Check if it's a movement or drop key
-    return this.isControlKey(code, 'MOVE_LEFT') ||
-           this.isControlKey(code, 'MOVE_RIGHT') ||
-           this.isControlKey(code, 'SOFT_DROP');
-  }
-  
-  /**
-   * Check if a code matches a control
-   */
-  isControlKey(code, control) {
-    const keys = this.controls[control];
-    if (!keys) return false;
-    
-    if (Array.isArray(keys)) {
-      return keys.includes(code);
+    if (action) {
+      this.emit('input', { action, type, key });
+      this.emit(action, { type, key });
     }
-    return keys === code;
   }
-  
+
   /**
-   * Check for action execution
+   * Map keyboard key to game action
    */
-  checkAction(code, isInitial) {
-    // Check each control
-    for (const [action, keys] of Object.entries(this.controls)) {
-      const keyList = Array.isArray(keys) ? keys : [keys];
+  mapKeyToAction(key) {
+    const keyMap = {
+      // Movement
+      'ArrowLeft': 'moveLeft',
+      'ArrowRight': 'moveRight',
+      'ArrowDown': 'softDrop',
       
-      if (keyList.includes(code)) {
-        // Execute action callback if registered
-        const callback = this.actions.get(action);
-        if (callback) {
-          callback(isInitial);
-        }
-      }
-    }
+      // Rotation
+      'ArrowUp': 'rotateClockwise',
+      'z': 'rotateClockwise',
+      'Z': 'rotateClockwise',
+      'x': 'rotateCounterClockwise',
+      'X': 'rotateCounterClockwise',
+      
+      // Hard drop
+      ' ': 'hardDrop',
+      
+      // Hold
+      'c': 'hold',
+      'C': 'hold',
+      'Shift': 'hold',
+      
+      // Pause
+      'p': 'pause',
+      'P': 'pause',
+      'Escape': 'pause'
+    };
+
+    return keyMap[key] || null;
   }
-  
+
   /**
-   * Check for release actions
+   * Check if key is a game-related key
    */
-  checkReleaseAction(code) {
-    // Check for soft drop release
-    if (this.isControlKey(code, 'SOFT_DROP')) {
-      const callback = this.actions.get('SOFT_DROP_RELEASE');
-      if (callback) callback();
-    }
+  isGameKey(key) {
+    const gameKeys = [
+      'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+      ' ', 'z', 'Z', 'x', 'X', 'c', 'C', 'Shift',
+      'p', 'P', 'Escape'
+    ];
+    return gameKeys.includes(key);
   }
-  
+
   /**
-   * Register an action callback
+   * Check if key is a movement key (for DAS/ARR)
    */
-  onAction(action, callback) {
-    this.actions.set(action, callback);
+  isMovementKey(key) {
+    return ['ArrowLeft', 'ArrowRight', 'ArrowDown'].includes(key);
   }
-  
+
   /**
-   * Unregister an action callback
+   * Check if a key is currently pressed
    */
-  offAction(action) {
-    this.actions.delete(action);
+  isKeyPressed(key) {
+    return this.keys[key] || false;
   }
-  
+
   /**
-   * Check if a control is currently pressed
+   * Check if an action is currently active
    */
-  isPressed(control) {
-    const keys = this.controls[control];
-    if (!keys) return false;
-    
-    const keyList = Array.isArray(keys) ? keys : [keys];
-    
-    for (const key of keyList) {
-      if (this.keys.get(key)) return true;
-    }
-    
-    return false;
-  }
-  
-  /**
-   * Add key to input buffer
-   */
-  addToBuffer(code) {
-    this.inputBuffer.push({
-      code,
-      time: Date.now(),
-      frame: 0
-    });
-    
-    // Limit buffer size
-    if (this.inputBuffer.length > 10) {
-      this.inputBuffer.shift();
-    }
-  }
-  
-  /**
-   * Update input buffer
-   */
-  updateBuffer(deltaTime) {
-    this.bufferTimer += deltaTime;
-    
-    // Update frame counters
-    for (const input of this.inputBuffer) {
-      input.frame++;
-    }
-    
-    // Remove old inputs
-    this.inputBuffer = this.inputBuffer.filter(
-      input => input.frame <= this.bufferSize
-    );
-  }
-  
-  /**
-   * Check if an action was buffered
-   */
-  checkBufferedAction(action) {
-    const keys = this.controls[action];
-    if (!keys) return false;
-    
-    const keyList = Array.isArray(keys) ? keys : [keys];
-    
-    for (const input of this.inputBuffer) {
-      if (keyList.includes(input.code)) {
-        // Remove from buffer
-        this.inputBuffer = this.inputBuffer.filter(i => i !== input);
+  isActionActive(action) {
+    for (const [key, pressed] of Object.entries(this.keys)) {
+      if (pressed && this.mapKeyToAction(key) === action) {
         return true;
       }
     }
-    
     return false;
   }
-  
+
   /**
-   * Track action for APM calculation
-   */
-  trackAction(code) {
-    const now = Date.now();
-    this.stats.lastActions.push(now);
-    
-    // Keep only actions from last minute
-    const oneMinuteAgo = now - 60000;
-    this.stats.lastActions = this.stats.lastActions.filter(
-      time => time > oneMinuteAgo
-    );
-  }
-  
-  /**
-   * Update actions per minute
-   */
-  updateAPM() {
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    
-    const recentActions = this.stats.lastActions.filter(
-      time => time > oneMinuteAgo
-    );
-    
-    this.stats.actionsPerMinute = recentActions.length;
-  }
-  
-  /**
-   * Check if a key is a game key
-   */
-  isGameKey(code) {
-    for (const keys of Object.values(this.controls)) {
-      const keyList = Array.isArray(keys) ? keys : [keys];
-      if (keyList.includes(code)) return true;
-    }
-    return false;
-  }
-  
-  /**
-   * Enable input
+   * Enable input handling
    */
   enable() {
     this.enabled = true;
   }
-  
+
   /**
-   * Disable input
+   * Disable input handling
    */
   disable() {
     this.enabled = false;
-    this.releaseAllKeys();
+    this.clearAllKeys();
   }
-  
+
   /**
-   * Pause input handling
+   * Clear all pressed keys and timers
    */
-  pause() {
-    this.isPaused = true;
-  }
-  
-  /**
-   * Resume input handling
-   */
-  resume() {
-    this.isPaused = false;
-  }
-  
-  /**
-   * Remap a control
-   */
-  remapControl(action, newKeys) {
-    if (this.controls[action] !== undefined) {
-      this.controls[action] = newKeys;
+  clearAllKeys() {
+    this.keys = {};
+    
+    // Clear all timers
+    for (const key in this.keyTimers) {
+      if (this.keyTimers[key].dasTimer) {
+        clearTimeout(this.keyTimers[key].dasTimer);
+      }
+      if (this.keyTimers[key].arrInterval) {
+        clearInterval(this.keyTimers[key].arrInterval);
+      }
     }
+    
+    this.keyTimers = {};
   }
-  
-  /**
-   * Reset controls to default
-   */
-  resetControls() {
-    this.controls = { ...CONTROLS };
-  }
-  
-  /**
-   * Get current control mappings
-   */
-  getControls() {
-    return { ...this.controls };
-  }
-  
+
   /**
    * Set DAS delay
    */
   setDAS(delay) {
-    this.dasDelay = Math.max(0, delay);
+    this.dasDelay = delay;
   }
-  
+
   /**
-   * Set ARR (Auto Repeat Rate)
+   * Set ARR rate
    */
   setARR(rate) {
-    this.arr = Math.max(0, rate);
+    this.arrRate = rate;
   }
-  
+
   /**
-   * Get input statistics
+   * Get DAS delay
    */
-  getStats() {
-    return {
-      ...this.stats,
-      dasDelay: this.dasDelay,
-      arr: this.arr,
-      activeKeys: Array.from(this.keys.entries())
-        .filter(([_, pressed]) => pressed)
-        .map(([code]) => code)
-    };
+  getDAS() {
+    return this.dasDelay;
+  }
+
+  /**
+   * Get ARR rate
+   */
+  getARR() {
+    return this.arrRate;
+  }
+
+  /**
+   * Get all currently pressed keys
+   */
+  getPressedKeys() {
+    return Object.keys(this.keys).filter(key => this.keys[key]);
+  }
+
+  /**
+   * Get all active actions
+   */
+  getActiveActions() {
+    return this.getPressedKeys()
+      .map(key => this.mapKeyToAction(key))
+      .filter(action => action !== null);
+  }
+
+  /**
+   * Reset input system
+   */
+  reset() {
+    this.clearAllKeys();
+    this.enable();
+  }
+
+  /**
+   * Clean up event listeners
+   */
+  dispose() {
+    this.clearAllKeys();
+    document.removeEventListener('keydown', this.handleKeyDown);
+    document.removeEventListener('keyup', this.handleKeyUp);
+    this.removeAllListeners();
   }
 }
-
-/**
- * Create singleton input handler
- */
-export const inputHandler = new InputHandler();
-
-export default InputHandler;
