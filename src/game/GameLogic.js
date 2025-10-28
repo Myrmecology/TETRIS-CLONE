@@ -43,12 +43,12 @@ export default class GameLogic {
         }
     }
 
-    // Spawn next piece (for preview) - FIXED: Positioned directly below "Next Piece" text
+    // Spawn next piece (for preview) - FIXED: Visible position below text
     spawnNextPiece() {
         this.nextPiece = new Tetromino(this.scene);
-        // Position directly below "Next Piece" text on right side
-        this.nextPiece.x = -5;  // Further right (more negative)
-        this.nextPiece.y = 1;   // Lower on screen (smaller Y)
+        // Position on right side, below "Next Piece" text
+        this.nextPiece.x = -7;  // Right side
+        this.nextPiece.y = 2;   // Near top (y=2 shows high on screen, below text)
         this.nextPiece.updatePosition();
     }
 
