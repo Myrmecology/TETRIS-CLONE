@@ -18,35 +18,59 @@ export default class Tetromino {
         return types[Math.floor(Math.random() * types.length)];
     }
 
-    // Create 3D mesh for the tetromino with amber material
+    // Create 3D mesh for the tetromino with rich amber crystal material
     createMesh() {
         const blockSize = CONFIG.BLOCK_SIZE;
 
         for (let row = 0; row < this.shape.length; row++) {
             for (let col = 0; col < this.shape[row].length; col++) {
                 if (this.shape[row][col]) {
-                    // Create box for each block
+                    // Create box for each block with slight bevel
                     const block = BABYLON.MeshBuilder.CreateBox(
                         `block_${this.type}_${row}_${col}`,
-                        { size: blockSize * 0.95 },
+                        { 
+                            size: blockSize * 0.95,
+                            width: blockSize * 0.95,
+                            height: blockSize * 0.95,
+                            depth: blockSize * 0.95
+                        },
                         this.scene
                     );
 
-                    // Create amber crystal PBR material
+                    // Create rich amber crystal PBR material
                     const material = new BABYLON.PBRMetallicRoughnessMaterial(
                         `amberMaterial_${row}_${col}`,
                         this.scene
                     );
 
-                    // Base amber color with slight transparency
-                    material.baseColor = CONFIG.COLORS.AMBER;
-                    material.metallic = 0.3;
-                    material.roughness = 0.2;
-                    material.alpha = 0.9;
+                    // Rich amber color with slight variation per block
+                    const variation = 0.9 + Math.random() * 0.2; // Slight color variation
+                    material.baseColor = new BABYLON.Color3(
+                        CONFIG.COLORS.AMBER.r * variation,
+                        CONFIG.COLORS.AMBER.g * variation,
+                        CONFIG.COLORS.AMBER.b * variation
+                    );
 
-                    // Add emissive glow for inner light effect
-                    material.emissiveColor = new BABYLON.Color3(1, 0.6, 0.1);
-                    material.emissiveIntensity = 0.3;
+                    // Material properties for crystal look
+                    material.metallic = CONFIG.VISUALS.BLOCK_METALLIC;
+                    material.roughness = CONFIG.VISUALS.BLOCK_ROUGHNESS;
+                    material.alpha = CONFIG.VISUALS.BLOCK_ALPHA;
+                    
+                    // Enable alpha blending for translucency
+                    material.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
+                    material.separateCullingPass = true;
+
+                    // Inner glow effect (warm amber light from within)
+                    material.emissiveColor = CONFIG.COLORS.AMBER_GLOW;
+                    material.emissiveIntensity = CONFIG.VISUALS.EMISSIVE_INTENSITY;
+
+                    // Subsurface effect - light passes through
+                    material.subSurface.isTranslucencyEnabled = true;
+                    material.subSurface.translucencyIntensity = 0.8;
+                    material.subSurface.tintColor = CONFIG.COLORS.AMBER;
+
+                    // Environmental reflections
+                    material.environmentIntensity = 0.4;
 
                     block.material = material;
 
@@ -54,6 +78,9 @@ export default class Tetromino {
                     block.position.x = (this.x + col) * blockSize;
                     block.position.y = (CONFIG.BOARD_HEIGHT - (this.y + row)) * blockSize;
                     block.position.z = 0;
+
+                    // Slight random rotation for organic crystal feel
+                    block.rotation.y = (Math.random() - 0.5) * 0.1;
 
                     this.blocks.push({
                         mesh: block,
@@ -74,15 +101,15 @@ export default class Tetromino {
         });
     }
 
-    // Move tetromino left - FIXED: swapped with moveRight
+    // Move tetromino left
     moveLeft() {
-        this.x++;  // Changed from this.x--
+        this.x++;
         this.updatePosition();
     }
 
-    // Move tetromino right - FIXED: swapped with moveLeft
+    // Move tetromino right
     moveRight() {
-        this.x--;  // Changed from this.x++
+        this.x--;
         this.updatePosition();
     }
 

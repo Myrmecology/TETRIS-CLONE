@@ -17,15 +17,22 @@ export default class GameScene {
         this.setupInput();
     }
 
-    // Setup scene with camera and lighting
+    // Setup scene with enhanced lighting and atmosphere
     setupScene() {
-        // Set background color
+        // Enhanced background with gradient
         this.scene.clearColor = new BABYLON.Color4(
-            CONFIG.COLORS.DARK_BLUE.r * 0.5,
-            CONFIG.COLORS.DARK_BLUE.g * 0.5,
-            CONFIG.COLORS.DARK_BLUE.b * 0.5,
+            CONFIG.COLORS.DARK_BLUE.r * 0.3,
+            CONFIG.COLORS.DARK_BLUE.g * 0.3,
+            CONFIG.COLORS.DARK_BLUE.b * 0.3,
             1
         );
+
+        // Volumetric fog for atmosphere
+        if (CONFIG.VISUALS.FOG_ENABLED) {
+            this.scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+            this.scene.fogDensity = CONFIG.VISUALS.FOG_DENSITY;
+            this.scene.fogColor = CONFIG.COLORS.FOG_COLOR;
+        }
 
         // Create camera - tilted forward for 3D depth
         this.camera = new BABYLON.ArcRotateCamera(
@@ -46,33 +53,120 @@ export default class GameScene {
         this.camera.lowerBetaLimit = CONFIG.CAMERA.BETA;
         this.camera.upperBetaLimit = CONFIG.CAMERA.BETA;
 
-        // Ambient light (cool blue)
+        // Enhanced ambient light (cool blue from above)
         const ambientLight = new BABYLON.HemisphericLight(
             'ambientLight',
             new BABYLON.Vector3(0, 1, 0),
             this.scene
         );
-        ambientLight.intensity = 0.6;
+        ambientLight.intensity = CONFIG.VISUALS.AMBIENT_INTENSITY;
         ambientLight.diffuse = CONFIG.COLORS.LIGHT_BLUE;
-        ambientLight.groundColor = CONFIG.COLORS.DARK_BLUE;
+        ambientLight.groundColor = new BABYLON.Color3(0.05, 0.1, 0.15);
+        ambientLight.specular = new BABYLON.Color3(0.2, 0.3, 0.5);
 
-        // Directional light (warm amber)
+        // Main directional light (warm amber from side)
         const directionalLight = new BABYLON.DirectionalLight(
             'directionalLight',
             new BABYLON.Vector3(-1, -2, -1),
             this.scene
         );
-        directionalLight.diffuse = CONFIG.COLORS.AMBER;
-        directionalLight.intensity = 0.8;
+        directionalLight.diffuse = CONFIG.COLORS.AMBER_GLOW;
+        directionalLight.intensity = CONFIG.VISUALS.DIRECTIONAL_INTENSITY;
+        directionalLight.specular = CONFIG.COLORS.AMBER;
 
-        // Add shadows
-        const shadowGenerator = new BABYLON.ShadowGenerator(1024, directionalLight);
+        // Accent point light (warm glow near board)
+        const accentLight = new BABYLON.PointLight(
+            'accentLight',
+            new BABYLON.Vector3(5, 15, 5),
+            this.scene
+        );
+        accentLight.diffuse = CONFIG.COLORS.AMBER;
+        accentLight.intensity = CONFIG.VISUALS.POINT_LIGHT_INTENSITY;
+        accentLight.range = 30;
+
+        // Secondary accent light (cool blue from other side)
+        const accentLight2 = new BABYLON.PointLight(
+            'accentLight2',
+            new BABYLON.Vector3(5, 10, -5),
+            this.scene
+        );
+        accentLight2.diffuse = CONFIG.COLORS.LIGHT_BLUE;
+        accentLight2.intensity = 0.4;
+        accentLight2.range = 25;
+
+        // Enhanced shadow system
+        const shadowGenerator = new BABYLON.ShadowGenerator(2048, directionalLight);
         shadowGenerator.useBlurExponentialShadowMap = true;
-        shadowGenerator.blurKernel = 32;
+        shadowGenerator.blurKernel = 64;
+        shadowGenerator.blurScale = 2;
+        shadowGenerator.darkness = 0.3;
 
-        // Add glow layer for ambient effect
-        const glowLayer = new BABYLON.GlowLayer('glow', this.scene);
-        glowLayer.intensity = 0.4;
+        // Enhanced glow layer for ambient lighting
+        const glowLayer = new BABYLON.GlowLayer('glow', this.scene, {
+            mainTextureFixedSize: 1024,
+            blurKernelSize: CONFIG.VISUALS.GLOW_BLUR_KERNEL
+        });
+        glowLayer.intensity = CONFIG.VISUALS.GLOW_INTENSITY;
+
+        // Create atmospheric particles (floating dust motes)
+        this.createAtmosphericParticles();
+    }
+
+    // Create floating ambient particles for atmosphere
+    createAtmosphericParticles() {
+        const particleSystem = new BABYLON.ParticleSystem(
+            'atmosphere',
+            200,
+            this.scene
+        );
+
+        particleSystem.particleTexture = new BABYLON.Texture(
+            'https://www.babylonjs-playground.com/textures/flare.png',
+            this.scene
+        );
+
+        // Emitter area around the board
+        particleSystem.emitter = new BABYLON.Vector3(5, 10, 0);
+        particleSystem.minEmitBox = new BABYLON.Vector3(-8, -10, -5);
+        particleSystem.maxEmitBox = new BABYLON.Vector3(8, 10, 5);
+
+        // Particle appearance - subtle amber dust
+        particleSystem.color1 = new BABYLON.Color4(
+            CONFIG.COLORS.AMBER_DARK.r,
+            CONFIG.COLORS.AMBER_DARK.g,
+            CONFIG.COLORS.AMBER_DARK.b,
+            0.15
+        );
+        particleSystem.color2 = new BABYLON.Color4(
+            CONFIG.COLORS.AMBER.r,
+            CONFIG.COLORS.AMBER.g,
+            CONFIG.COLORS.AMBER.b,
+            0.1
+        );
+        particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0);
+
+        // Very small particles
+        particleSystem.minSize = 0.05;
+        particleSystem.maxSize = 0.15;
+
+        // Long lifetime, slow movement
+        particleSystem.minLifeTime = 8;
+        particleSystem.maxLifeTime = 15;
+
+        particleSystem.emitRate = 10;
+
+        // Slow upward drift
+        particleSystem.direction1 = new BABYLON.Vector3(-0.5, 0.5, -0.5);
+        particleSystem.direction2 = new BABYLON.Vector3(0.5, 1, 0.5);
+
+        particleSystem.minEmitPower = 0.2;
+        particleSystem.maxEmitPower = 0.5;
+        particleSystem.updateSpeed = 0.01;
+
+        // Additive blending for glow
+        particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ADD;
+
+        particleSystem.start();
     }
 
     // Initialize game logic
