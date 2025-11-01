@@ -8,9 +8,15 @@ export default class Board {
         this.grid = this.createEmptyGrid();
         this.lockedBlocks = [];
         this.particleSystem = null;
+        this.camera = null; // Will be set by GameScene for shake effect
         
         this.createBoardVisuals();
         this.createParticleSystem();
+    }
+
+    // Set camera reference for shake effects
+    setCamera(camera) {
+        this.camera = camera;
     }
 
     // Create empty grid
@@ -155,7 +161,7 @@ export default class Board {
     createParticleSystem() {
         this.particleSystem = new BABYLON.ParticleSystem(
             'lineClearing',
-            CONFIG.VISUALS.PARTICLE_CAPACITY,
+            CONFIG.VISUALS.PARTICLE_CAPACITY * 2, // Double capacity for explosion
             this.scene
         );
 
@@ -186,25 +192,25 @@ export default class Board {
         );
 
         // Particle size
-        this.particleSystem.minSize = 0.1;
-        this.particleSystem.maxSize = 0.3;
+        this.particleSystem.minSize = 0.15;
+        this.particleSystem.maxSize = 0.4;
 
         // Particle lifetime
-        this.particleSystem.minLifeTime = 0.3;
-        this.particleSystem.maxLifeTime = 0.8;
+        this.particleSystem.minLifeTime = 0.4;
+        this.particleSystem.maxLifeTime = 1.2;
 
         // Emission rate (manual trigger)
         this.particleSystem.manualEmitCount = 0;
         this.particleSystem.emitRate = 0;
 
-        // Gravity and direction
-        this.particleSystem.gravity = new BABYLON.Vector3(0, -9.81, 0);
-        this.particleSystem.direction1 = new BABYLON.Vector3(-1, 1, -1);
-        this.particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
+        // Gravity and direction - EXPLOSIVE
+        this.particleSystem.gravity = new BABYLON.Vector3(0, -12, 0);
+        this.particleSystem.direction1 = new BABYLON.Vector3(-2, 2, -2);
+        this.particleSystem.direction2 = new BABYLON.Vector3(2, 3, 2);
 
-        // Speed
-        this.particleSystem.minEmitPower = 2;
-        this.particleSystem.maxEmitPower = 5;
+        // Speed - MUCH FASTER
+        this.particleSystem.minEmitPower = 4;
+        this.particleSystem.maxEmitPower = 8;
 
         // Blending mode for glow
         this.particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ADD;
@@ -212,7 +218,7 @@ export default class Board {
         this.particleSystem.start();
     }
 
-    // Trigger particle burst at position
+    // ENHANCED: Trigger massive particle burst at position
     triggerParticleBurst(x, y) {
         const blockSize = CONFIG.BLOCK_SIZE;
         this.particleSystem.emitter = new BABYLON.Vector3(
@@ -220,7 +226,57 @@ export default class Board {
             (CONFIG.BOARD_HEIGHT - y) * blockSize,
             0
         );
-        this.particleSystem.manualEmitCount = CONFIG.VISUALS.LINE_CLEAR_PARTICLE_COUNT;
+        // TRIPLE the particles for explosive effect
+        this.particleSystem.manualEmitCount = CONFIG.VISUALS.LINE_CLEAR_PARTICLE_COUNT * 3;
+    }
+
+    // NEW: Screen flash effect
+    createScreenFlash() {
+        if (!this.scene.activeCamera) return;
+        
+        // Create flash overlay
+        const advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI('flash', true, this.scene);
+        const flash = new BABYLON.GUI.Rectangle();
+        flash.width = 1;
+        flash.height = 1;
+        flash.thickness = 0;
+        flash.background = 'white';
+        flash.alpha = 0;
+        advancedTexture.addControl(flash);
+
+        // Flash animation
+        let flashAlpha = 0.6;
+        const flashInterval = setInterval(() => {
+            flashAlpha -= 0.06;
+            flash.alpha = Math.max(0, flashAlpha);
+            
+            if (flashAlpha <= 0) {
+                clearInterval(flashInterval);
+                advancedTexture.dispose();
+            }
+        }, 16);
+    }
+
+    // NEW: Camera shake effect
+    triggerCameraShake(intensity = 0.3) {
+        if (!this.camera) return;
+
+        const originalPosition = this.camera.position.clone();
+        let shakeTime = 0;
+        const shakeDuration = 300; // milliseconds
+        
+        const shakeInterval = setInterval(() => {
+            shakeTime += 16;
+            
+            if (shakeTime >= shakeDuration) {
+                this.camera.position = originalPosition;
+                clearInterval(shakeInterval);
+            } else {
+                // Random shake
+                this.camera.position.x = originalPosition.x + (Math.random() - 0.5) * intensity;
+                this.camera.position.y = originalPosition.y + (Math.random() - 0.5) * intensity;
+            }
+        }, 16);
     }
 
     // Check if position is valid
@@ -270,43 +326,62 @@ export default class Board {
         return completedLines;
     }
 
-    // Clear completed lines with enhanced animation and particles
+    // ENHANCED: Clear completed lines with EXPLOSIVE animation
     clearLines(lines) {
         const blockSize = CONFIG.BLOCK_SIZE;
         
-        // Trigger particle effects for each cleared line
+        // SCREEN FLASH!
+        this.createScreenFlash();
+        
+        // CAMERA SHAKE! (intensity increases with more lines)
+        this.triggerCameraShake(0.2 * lines.length);
+        
+        // MASSIVE PARTICLE EXPLOSIONS for each cleared line
         lines.forEach(lineY => {
-            // Particle burst at center of line
-            const centerX = this.width / 2;
-            this.triggerParticleBurst(centerX, lineY);
+            // Multiple particle bursts across the line
+            for (let x = 0; x < this.width; x += 2) {
+                this.triggerParticleBurst(x, lineY);
+            }
             
             for (let x = 0; x < this.width; x++) {
                 if (this.grid[lineY][x]) {
                     const mesh = this.grid[lineY][x];
                     
-                    // Enhanced glow effect before disposal
+                    // INTENSE glow pulse before disposal
                     if (mesh.material) {
-                        mesh.material.emissiveIntensity = 2.0;
+                        mesh.material.emissiveIntensity = 3.0; // SUPER bright!
                         
-                        // Pulse animation
+                        // Rapid pulse animation
                         let pulseCount = 0;
                         const pulseInterval = setInterval(() => {
                             if (mesh.material) {
-                                mesh.material.emissiveIntensity = 2.0 + Math.sin(pulseCount * 0.5) * 0.5;
+                                mesh.material.emissiveIntensity = 3.0 + Math.sin(pulseCount * 1.0) * 1.5;
                             }
                             pulseCount++;
-                            if (pulseCount > 5) {
+                            if (pulseCount > 8) {
                                 clearInterval(pulseInterval);
                             }
-                        }, 50);
+                        }, 30);
                     }
+                    
+                    // Scale up explosion effect
+                    BABYLON.Animation.CreateAndStartAnimation(
+                        'explode',
+                        mesh,
+                        'scaling',
+                        60,
+                        10,
+                        mesh.scaling.clone(),
+                        new BABYLON.Vector3(1.5, 1.5, 1.5),
+                        BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+                    );
                     
                     // Dispose after animation
                     setTimeout(() => {
                         if (mesh) {
                             mesh.dispose();
                         }
-                    }, 250);
+                    }, 300);
                     
                     this.grid[lineY][x] = null;
                 }
@@ -344,7 +419,7 @@ export default class Board {
                     this.grid[0][x] = null;
                 }
             });
-        }, 300);
+        }, 350);
     }
 
     // Check if game is over (top row has blocks)

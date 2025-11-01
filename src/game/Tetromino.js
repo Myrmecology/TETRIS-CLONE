@@ -18,7 +18,7 @@ export default class Tetromino {
         return types[Math.floor(Math.random() * types.length)];
     }
 
-    // Create 3D mesh for the tetromino with rich amber crystal material
+    // Create 3D mesh for the tetromino with rich amber crystal material + glowing blue outline
     createMesh() {
         const blockSize = CONFIG.BLOCK_SIZE;
 
@@ -82,6 +82,9 @@ export default class Tetromino {
                     // Slight random rotation for organic crystal feel
                     block.rotation.y = (Math.random() - 0.5) * 0.1;
 
+                    // *** NEW: ADD GLOWING BLUE OUTLINE ***
+                    this.addGlowingOutline(block);
+
                     this.blocks.push({
                         mesh: block,
                         localX: col,
@@ -90,6 +93,35 @@ export default class Tetromino {
                 }
             }
         }
+    }
+
+    // NEW: Add glowing blue outline to a block
+    addGlowingOutline(block) {
+        // Enable edge rendering for glowing outline effect
+        block.enableEdgesRendering();
+        
+        // Configure edges - blue glow
+        block.edgesWidth = 8.0; // Thickness of outline
+        block.edgesColor = new BABYLON.Color4(
+            CONFIG.COLORS.LIGHT_BLUE.r,
+            CONFIG.COLORS.LIGHT_BLUE.g,
+            CONFIG.COLORS.LIGHT_BLUE.b,
+            0.9 // Slight transparency
+        );
+
+        // Create a second outline layer for extra glow (creates depth)
+        const outlineClone = block.clone(`outline_${block.name}`);
+        outlineClone.parent = block;
+        outlineClone.scaling = new BABYLON.Vector3(1.02, 1.02, 1.02); // Slightly larger
+        
+        // Outline material - pure blue glow
+        const outlineMaterial = new BABYLON.StandardMaterial(`outlineMat_${block.name}`, this.scene);
+        outlineMaterial.emissiveColor = CONFIG.COLORS.LIGHT_BLUE;
+        outlineMaterial.alpha = 0.3; // Transparent so it's just a glow
+        outlineMaterial.wireframe = true; // Wireframe mode for outline effect
+        
+        outlineClone.material = outlineMaterial;
+        outlineClone.isPickable = false; // Don't interfere with game logic
     }
 
     // Update position of all blocks
@@ -139,8 +171,16 @@ export default class Tetromino {
 
     // Recreate mesh after rotation
     recreateMesh() {
-        // Dispose old blocks
-        this.blocks.forEach(block => block.mesh.dispose());
+        // Dispose old blocks (including their outline children)
+        this.blocks.forEach(block => {
+            if (block.mesh) {
+                // Dispose children (outlines) first
+                if (block.mesh.getChildren) {
+                    block.mesh.getChildren().forEach(child => child.dispose());
+                }
+                block.mesh.dispose();
+            }
+        });
         this.blocks = [];
 
         // Create new blocks with rotated shape
@@ -167,9 +207,13 @@ export default class Tetromino {
     dispose() {
         this.blocks.forEach(block => {
             if (block.mesh) {
+                // Dispose children (outlines) first
+                if (block.mesh.getChildren) {
+                    block.mesh.getChildren().forEach(child => child.dispose());
+                }
                 block.mesh.dispose();
             }
         });
-        this.blocks = [];
+        this.blocks = [];;
     }
 }

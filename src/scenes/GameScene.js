@@ -179,6 +179,9 @@ export default class GameScene {
             }
         );
 
+        // Connect camera to board for shake effects
+        this.gameLogic.board.setCamera(this.camera);
+
         // Update loop
         this.scene.registerBeforeRender(() => {
             this.gameLogic.update();
